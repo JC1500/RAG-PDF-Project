@@ -17,7 +17,7 @@ llm=ChatOllama(model='gemma3:4b')
 extractor_model=llm.with_structured_output(schema)
 
 
-def extract_memory(message:str, memory:list[str]=None):
+def extract_memory(message:str, memory:list[str]=None)->None| list[str]:
     """
     This function is used to extract the Long-Term Memory from the user input messges
     """
@@ -46,7 +46,7 @@ def extract_memory(message:str, memory:list[str]=None):
     return None
 
 if(__name__=='__main__'):
-    res=extract_memory(message='Will talk to you tomorrow')
+    res=extract_memory(message='i am jc years old')
     print(res)
     if res:
         print(res)
