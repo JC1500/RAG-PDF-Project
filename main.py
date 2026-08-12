@@ -25,8 +25,6 @@ async def lifespan(app: FastAPI):
     pool=ConnectionPool(conninfo=str(os.getenv('DB_URI')),min_size=2,max_size=20,max_lifetime=3600.0,kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
     checkpointer=PostgresSaver(pool)
     store=PostgresStore(pool)
-    checkpointer.setup()
-    store.setup()
     chatbot = graph.compile(checkpointer=checkpointer, store=store)
     yield 
     

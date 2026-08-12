@@ -1,7 +1,7 @@
 from langchain_ollama import ChatOllama  
 from pydantic import BaseModel,Field
 from typing import Annotated
-
+from typing import Optional
 """
     Function to extract Long-Term Memory is defined here
 """
@@ -13,11 +13,11 @@ class schema(BaseModel):
 
 
 
-llm=ChatOllama(model='gemma3:4b')
+llm=ChatOllama(model='gemma3:4b',temperature=0.0)
 extractor_model=llm.with_structured_output(schema)
 
 
-def extract_memory(message:str, memory:list[str]=None)->None| list[str]:
+def extract_memory(message:str, memory:Optional[list[str]]=None)->None| list[str]:
     """
     This function is used to extract the Long-Term Memory from the user input messges
     """
@@ -41,12 +41,12 @@ def extract_memory(message:str, memory:list[str]=None)->None| list[str]:
         """
     msg=system_prompt.format(memory=memory,message=message)
     response=extractor_model.invoke(msg)
-    if response.is_present:
-        return response.memories
+    if response.is_present: #type:ignore
+        return response.memories  #type:ignore
     return None
 
 if(__name__=='__main__'):
-    res=extract_memory(message='i am jc years old')
+    res=extract_memory(message='i will call you tomorrow')
     print(res)
-    if res:
+    if res is not None:
         print(res)

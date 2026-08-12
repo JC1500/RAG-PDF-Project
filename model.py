@@ -4,7 +4,6 @@ from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph,START,END,MessagesState
 from langchain.messages import SystemMessage,HumanMessage,RemoveMessage,AIMessage,ToolMessage
-# from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 from dotenv import load_dotenv
@@ -33,9 +32,9 @@ def extract_ltm(s:State,config:RunnableConfig,store:BaseStore):
     memories=store.search(namespace)
     msg=s['messages'][-2].content
     res=extract_memory(msg,memories) #type:ignore
-    if res:
+    if res is not None:
         for item in res:
-            store.put(namespace=namespace,key=str(uuid.uuid4()),value=item)  #type:ignore
+            store.put(namespace=namespace,key=str(uuid.uuid4()),value={'memory':item})  #type:ignore
     
 def chat_node(s:State,config:RunnableConfig,store:BaseStore):
     """
@@ -45,7 +44,7 @@ def chat_node(s:State,config:RunnableConfig,store:BaseStore):
     namespace=('users',str(config['configurable']['user_id']),'details') #type:ignore
     items=store.search(namespace)
     if items:
-        ltm=[item.value for item in items]
+        ltm=[item.value.get('memory','') for item in items]
         print(ltm)
         ltm=' \n '.join(ltm) #type:ignore
     else:
@@ -117,7 +116,7 @@ def condition_check(s:State):
     if(len(s['messages'])>4): return 'create_summary'
     return '__end__'
 
-
+    
 
 
 graph=StateGraph(State)
@@ -130,25 +129,23 @@ graph.add_edge(START,'chat_node')
 graph.add_edge('chat_node','extract_ltm')
 graph.add_conditional_edges('extract_ltm',condition_check,{'create_summary':'create_summary','__end__':'__end__'})
 graph.add_edge('create_summary',END)
+    
 
-
-def invoke(inp:str,user_id:str,thread_id:str):
-    with PostgresSaver.from_conn_string(str(os.getenv('DB_URI'))) as checkpointer,PostgresStore.from_conn_string(str(os.getenv('DB_URI'))) as store:
-        chatbot=graph.compile(checkpointer=checkpointer,store=store)
-        res=chatbot.invoke(State(messages=[HumanMessage(content=inp)]),config={'configurable':{'thread_id':thread_id,'user_id':user_id}})
-        return res
-        
 
 if __name__=='__main__':
-    while True:
-        inp=input('Enter msg: ')
-        if inp=='exit':
-            break
-        res=invoke(inp=inp,thread_id='1',user_id='u1')
-        msg=res.get('messages','')
-        print(len(msg))
-        for m in msg:
-            print(m.content)
-        print('-'*30)
-        print(res.get('summary',''))
-        print("store: ", store.search(('users','u1','details')))
+    with PostgresSaver.from_conn_string(str(os.getenv('DB_URI'))) as checkpointer,PostgresStore.from_conn_string(str(os.getenv('DB_URI'))) as store:
+        store.setup()
+        checkpointer.setup()
+        chatbot = graph.compile(checkpointer=checkpointer, store=store)
+        while True:
+            inp=input('Enter msg: ')
+            if inp=='exit':
+                break
+            res=chatbot.invoke(State(messages=[HumanMessage(content=inp)]),config={'configurable':{'thread_id':'1','user_id':'u1'}})
+            msg=res.get('messages','')
+            print(len(msg))
+            for m in msg:
+                print(m.content)
+            print('-'*30)
+            print(res.get('summary',''))
+            print("store: ", store.search(('users','u1','details')))
