@@ -11,7 +11,7 @@ model_name="sentence-transformers/all-MiniLM-L6-v2"
 collection_name='test'
 
 
-def get(email: str, query: str,thread_id:str):
+def get_from_store(email: str, query: str,thread_id:str):
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -99,7 +99,7 @@ def push_batch(email: str, chunks: list[str], thread_id: str):
 if __name__=='__main__':
     em='abc@gmail.com'
     #   push(chunks='hi there ',email=em)
-    a=get(query='hello',email=em,thread_id='13')
+    a=get_from_store(query='hello',email=em,thread_id='13')
     # print(a)
     # for i in a:
     #     print(i)
