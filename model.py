@@ -30,7 +30,7 @@ summariser_model=ChatOllama(model='gemma3:4b',temperature=0.0)
 def extract_ltm(s:State,config:RunnableConfig,store:BaseStore):
     namespace=('users',str(config['configurable']['user_id']),'details') #type:ignore
     memories=store.search(namespace)
-    msg=s['messages'][-2].content
+    msg=s['messages'][-1].content
     res=extract_memory(msg,memories) #type:ignore
     if res is not None:
         for item in res:
@@ -125,9 +125,9 @@ graph.add_node('chat_node',chat_node) #type:ignore
 graph.add_node('extract_ltm',extract_ltm)  #type:ignore
 graph.add_node('create_summary',create_summary)  #type:ignore
 
-graph.add_edge(START,'chat_node')
-graph.add_edge('chat_node','extract_ltm')
-graph.add_conditional_edges('extract_ltm',condition_check,{'create_summary':'create_summary','__end__':'__end__'})
+graph.add_edge(START,'extract_ltm')
+graph.add_edge('extract_ltm','chat_node')
+graph.add_conditional_edges('chat_node',condition_check,{'create_summary':'create_summary','__end__':'__end__'})
 graph.add_edge('create_summary',END)
     
 
