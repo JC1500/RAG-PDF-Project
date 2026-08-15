@@ -2,7 +2,7 @@ from langchain_openrouter import ChatOpenRouter
 import os
 from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
-from langgraph.graph import StateGraph,START,END,MessagesState
+from langgraph.graph import StateGraph,START,END,MessagesState,add_messages
 from langchain.messages import SystemMessage,HumanMessage,RemoveMessage,AIMessage,ToolMessage
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel
 from utils.extractor import extract_memory
+from utils.vector_store import get_from_store
 import uuid
 from typing import Optional
 
@@ -18,6 +19,8 @@ load_dotenv()
 
 class State(MessagesState):
     summary:str
+    email:str
+    docs:list[str]
 
 
 model=ChatOllama(model='gemma3:4b',temperature=0.0)
@@ -35,6 +38,14 @@ def extract_ltm(s:State,config:RunnableConfig,store:BaseStore):
     if res is not None:
         for item in res:
             store.put(namespace=namespace,key=str(uuid.uuid4()),value={'memory':item})  #type:ignore
+
+def get_from_memory(s:State,config:RunnableConfig):
+    prompt = f"""Given this conversation summary: {s.get('summary','')}
+    And the user and ai messages: {s['messages']}
+    Write a search query to get the relevant data from the Vector store based on the chats. Only output the search query."""
+    rewritten = summariser_model.invoke([SystemMessage(content=prompt)])
+    res=get_from_store(email=s['email'],query=rewritten.content, thread_id=str(config['configurable']['thread_id']))
+    return {'docs': res} 
     
 def chat_node(s:State,config:RunnableConfig,store:BaseStore):
     """
@@ -124,9 +135,12 @@ graph=StateGraph(State)
 graph.add_node('chat_node',chat_node) #type:ignore
 graph.add_node('extract_ltm',extract_ltm)  #type:ignore
 graph.add_node('create_summary',create_summary)  #type:ignore
+graph.add_node('get_from_memory', get_from_memory) #type:ignore
 
-graph.add_edge(START,'extract_ltm')
-graph.add_edge('extract_ltm','chat_node')
+graph.add_edge(START, 'extract_ltm')
+graph.add_edge(START, 'get_from_memory')
+graph.add_edge('extract_ltm', 'chat_node')
+graph.add_edge('get_from_memory', 'chat_node')
 graph.add_conditional_edges('chat_node',condition_check,{'create_summary':'create_summary','__end__':'__end__'})
 graph.add_edge('create_summary',END)
     
