@@ -45,6 +45,7 @@ def get_from_memory(s:State,config:RunnableConfig):
     Write a search query to get the relevant data from the Vector store based on the chats. Only output the search query."""
     rewritten = summariser_model.invoke([SystemMessage(content=prompt)])
     res=get_from_store(email=s['email'],query=rewritten.content, thread_id=str(config['configurable']['thread_id']))
+    print(rewritten.content)
     return {'docs': res} 
     
 def chat_node(s:State,config:RunnableConfig,store:BaseStore):
@@ -136,7 +137,6 @@ graph.add_node('chat_node',chat_node) #type:ignore
 graph.add_node('extract_ltm',extract_ltm)  #type:ignore
 graph.add_node('create_summary',create_summary)  #type:ignore
 graph.add_node('get_from_memory', get_from_memory) #type:ignore
-
 graph.add_edge(START, 'extract_ltm')
 graph.add_edge(START, 'get_from_memory')
 graph.add_edge('extract_ltm', 'chat_node')
@@ -148,18 +148,18 @@ graph.add_edge('create_summary',END)
 
 if __name__=='__main__':
     with PostgresSaver.from_conn_string(str(os.getenv('DB_URI'))) as checkpointer,PostgresStore.from_conn_string(str(os.getenv('DB_URI'))) as store:
-        store.setup()
-        checkpointer.setup()
-        chatbot = graph.compile(checkpointer=checkpointer, store=store)
-        while True:
-            inp=input('Enter msg: ')
-            if inp=='exit':
-                break
-            res=chatbot.invoke(State(messages=[HumanMessage(content=inp)]),config={'configurable':{'thread_id':'1','user_id':'u1'}})
-            msg=res.get('messages','')
-            print(len(msg))
-            for m in msg:
-                print(m.content)
-            print('-'*30)
-            print(res.get('summary',''))
-            print("store: ", store.search(('users','u1','details')))
+        # chatbot = graph.compile(checkpointer=checkpointer, store=store)
+        # while True:
+        #     inp=input('Enter msg: ')
+        #     if inp=='exit':
+        #         break
+        #     res=chatbot.invoke(State(messages=[HumanMessage(content=inp)]),config={'configurable':{'thread_id':'1','user_id':'u1'}})
+        #     msg=res.get('messages','')
+        #     print(len(msg))
+        #     for m in msg:
+        #         print(m.content)
+        #     print('-'*30)
+        #     print(res.get('summary',''))
+        #     print("store: ", store.search(('users','u1','details')))
+        r=get_from_memory(State({'messages':[HumanMessage("What is the meaning of the word 'machine Learning' in the document")],'docs':[],'email':'abc@gmail.com',"summary":''}),config=RunnableConfig(configurable={'thread_id':'1'}))
+        print(r)

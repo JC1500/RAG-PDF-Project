@@ -56,6 +56,11 @@ def push(email:str,chunks:str,thread_id:str):
                 field_name="email",
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name="thread_id",
+                field_schema=models.PayloadSchemaType.KEYWORD
+            )
     point=PointStruct(
         id=str(uuid.uuid4()),
         vector=Document(text=chunks, model=model_name),
@@ -75,15 +80,20 @@ def push_batch(email: str, chunks: list[str], thread_id: str):
     client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"),cloud_inference=True,timeout=100)
     size = client.get_embedding_size(model_name)
     if not client.collection_exists(collection_name):  ###chatbot_memorystore
-                client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(size=size, distance=Distance.COSINE)
-                )
-                client.create_payload_index(
-                    collection_name=collection_name,
-                    field_name="email",
-                    field_schema=models.PayloadSchemaType.KEYWORD
-    )
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=size, distance=Distance.COSINE)
+            )
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name="email",
+                field_schema=models.PayloadSchemaType.KEYWORD
+            )                            
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name="thread_id",
+                field_schema=models.PayloadSchemaType.KEYWORD
+            )
     points = [
         PointStruct(
             id=str(uuid.uuid4()),
@@ -98,9 +108,10 @@ def push_batch(email: str, chunks: list[str], thread_id: str):
 
 if __name__=='__main__':
     em='abc@gmail.com'
-    #   push(chunks='hi there ',email=em)
+    # push(chunks='hi there ',email=em,thread_id='13')
+    push_batch(chunks=['hello','hi','bye'],email=em,thread_id='13')
     a=get_from_store(query='hello',email=em,thread_id='13')
-    # print(a)
+    print(a)
     # for i in a:
     #     print(i)
     # print(type(a))
