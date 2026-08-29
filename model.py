@@ -2,20 +2,23 @@ import asyncio
 import os
 import uuid
 from typing import Optional
-
+from langchain.tools import tool
+from langgraph.prebuilt import ToolNode,tools_condition
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
+from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import StateGraph, START, END, MessagesState, add_messages
 from langchain.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres.aio import AsyncPostgresStore
+from langgraph.types import RetryPolicy
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel
-
 from utils.extractor import extract_memory
 from utils.vector_store import get_from_store
-
+from langgraph.config import get_stream_writer
+from retries.api_fault import api_retry
 load_dotenv()
 
 
@@ -23,13 +26,16 @@ class State(MessagesState):
     summary: str
     email: str
     docs: list[str]
+    query:str
 
 
-model = ChatOllama(model='gemma3:4b', temperature=0.0)
+model =ChatOpenRouter(model='poolside/laguna-s-2.1:free',temperature=0.0)
 summariser_model = ChatOllama(model='gemma3:4b', temperature=0.0)
 
 
 async def extract_ltm(s: State, config: RunnableConfig, store: BaseStore):
+    writer = get_stream_writer() 
+    writer({'custom_key':"Extracting Ltm......"})
     namespace = ('users', str(config['configurable']['user_id']).replace(".", "_dot_"), 'details')  # type:ignore
     items = await store.asearch(namespace)
     existing_memories = [item.value.get('memory', '') for item in items] if items else []
@@ -39,17 +45,15 @@ async def extract_ltm(s: State, config: RunnableConfig, store: BaseStore):
         for item in res:
             await store.aput(namespace=namespace, key=str(uuid.uuid4()), value={'memory': item})  # type:ignore
 
-
-async def get_from_memory(s: State, config: RunnableConfig):
-    prompt = f"""Given this conversation summary: {s.get('summary', '')}
-    And the user and ai messages: {s['messages']}
-    Write a search query to get the relevant data from the Vector store based on the chats. Only output the search query."""
-    rewritten = await summariser_model.ainvoke([SystemMessage(content=prompt)])
+@tool(description="This is the retreiver which retreives the documents from the store. You need to pass the query for the retreiver search.")
+async def get_from_memory(query: State, config: RunnableConfig):
+    writer = get_stream_writer() 
+    writer({'custom_key':"Extracting data from documents......"})
     # get_from_store hits Qdrant with a blocking client; run it off the event loop.
     res = await asyncio.to_thread(
         get_from_store,
         email=s['email'],
-        query=rewritten.content,
+        query=s,
         thread_id=str(config['configurable']['thread_id']),
     )
     return {'docs': res}
@@ -92,7 +96,9 @@ async def chat_node(s: State, config: RunnableConfig, store: BaseStore):
     if hist:
         messages.append(SystemMessage(content=f"Conversation Summary of the same chat till now:\n{hist}"))
     messages.extend(s['messages'])
-
+    # model_with_tools=model.bind_tools([get_from_memory])
+    writer = get_stream_writer() 
+    writer({'custom_key':"Model is thinking......"})
     res = await model.ainvoke(messages)
     return {'messages': [res]}
 
@@ -132,6 +138,8 @@ async def create_summary(s: State):
         - Avoid speculation, unnecessary detail, or references to browsing metadata.
         - Ensure the summary is cohesive, easy to read, and captures the essence of the conversation.
         The messages are given below.\n {msg} """
+    writer = get_stream_writer() 
+    writer({'custom_key':"Generating summary......"})
     summary = await summariser_model.ainvoke([SystemMessage(content=prompt)])
     return {'summary': summary.content, 'messages': [RemoveMessage(id=m.id) for m in chats if m.id]}
 
@@ -143,23 +151,23 @@ def condition_check(s: State):
 
 
 graph = StateGraph(State)
-
-graph.add_node('chat_node', chat_node)  # type:ignore
+tools=ToolNode([get_from_memory])
+graph.add_node('tools',tools)
+graph.add_node('chat_node', chat_node,retry_policy=RetryPolicy(max_attempts=3,jitter=True,retry_on=api_retry,initial_interval=1.0,backoff_factor=2))  # type:ignore
 graph.add_node('extract_ltm', extract_ltm)  # type:ignore
 graph.add_node('create_summary', create_summary)  # type:ignore
-graph.add_node('get_from_memory', get_from_memory)  # type:ignore
 graph.add_edge(START, 'extract_ltm')
-graph.add_edge(START, 'get_from_memory')
-graph.add_edge('extract_ltm', 'chat_node')
-graph.add_edge('get_from_memory', 'chat_node')
-graph.add_conditional_edges('chat_node', condition_check, {'create_summary': 'create_summary', '__end__': '__end__'})
+graph.add_edge(START, 'chat_node')
+graph.add_edge('extract_ltm',END)
+graph.add_conditional_edges('chat_node',tools_condition)
+graph.add_edge('tools','chat_node')
+graph.add_conditional_edges('extract_ltm', condition_check, {'create_summary': 'create_summary', '__end__': '__end__'})
 graph.add_edge('create_summary', END)
 
 
 if __name__ == '__main__':
     async def main():
-        async with AsyncPostgresSaver.from_conn_string(str(os.getenv('DB_URI'))) as checkpointer, \
-                   AsyncPostgresStore.from_conn_string(str(os.getenv('DB_URI'))) as store:
+        async with AsyncPostgresSaver.from_conn_string(str(os.getenv('DB_URI'))) as checkpointer, AsyncPostgresStore.from_conn_string(str(os.getenv('DB_URI'))) as store:
             chatbot = graph.compile(checkpointer=checkpointer, store=store)
             while True:
                 inp = input('Enter msg: ')
