@@ -19,7 +19,7 @@ llm = ChatOllama(model='gemma3:4b', temperature=0.0)
 extractor_model = llm.with_structured_output(schema)
 
 
-async def extract_memory(message: list[AnyMessage], memory: Optional[list[str]] = None) -> None | list[str]:
+async def extract_memory(message: list[AnyMessage], memory: Optional[list[str]] = None) -> None | dict[str,str]:
     """
     This function is used to extract the Long-Term Memory from the user input messages.
     Runs asynchronously so it doesn't block the event loop while waiting on the LLM.
@@ -58,7 +58,7 @@ async def extract_memory(message: list[AnyMessage], memory: Optional[list[str]] 
         ## IF error in extraction return None
         return None
     if result.is_present:  # type:ignore
-        return result.memories  # type:ignore
+        return {'memory': result.memories,"summary": result.summary}  # type:ignore
     return None
 
 if __name__ == '__main__':
