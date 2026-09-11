@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse,FileResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Depends
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse,HTMLResponse
 from psycopg_pool import ConnectionPool
 import tempfile
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from vector_store import push_batch
+from utils.vector_store import push_batch
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 import os
@@ -13,11 +13,23 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 import pymupdf4llm
-
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
+from utils.classes import ChatRequest
 
 chatbot = None
 checkpointer = None
 store = None
+
+#OpenID Connect setup (GOOGLE)
+oauth=OAuth()
+oauth.register(
+    name="google",
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,22 +41,87 @@ async def lifespan(app: FastAPI):
     yield 
     
     pool.close()
-    print("Database connections closed successfully.")
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get('/',response_class=HTMLResponse)
+def default():
+    return FileResponse("index.html")
 
-class ChatRequest(BaseModel):
-    inp: str
-    user_id: str
-    thread_id: str
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=str(os.getenv("SESSION_SECRET")),
+    same_site="lax",
+    https_only=os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true",
+)
 
-# @app.get('/')
-# def default():
-#     return FileResponse("index.html")
+
+
+
+def get_current_user(request: Request) -> dict:
+    """Reads the authenticated user from the server-side session.
+    Raises 401 if no one is logged in — the frontend is expected to
+    redirect to /auth/login in that case."""
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in.")
+    return user
+
+
+
+
+#Auth
+
+@app.get("/auth/login")
+async def login(request: Request):
+    redirect_uri = request.url_for("auth_callback")
+    print("LOGIN session id:", request.session)
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request):
+    print("CALLBACK session before exchange:", request.session)
+    try:
+        print(str(request))
+        token = await oauth.google.authorize_access_token(request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Login failed: {e}")
+
+    userinfo = token.get("userinfo")
+    if not userinfo or not userinfo.get("email"):
+        raise HTTPException(status_code=400, detail="Google did not return an email.")
+
+    request.session["user"] = {
+        "email": userinfo["email"],
+        "name": userinfo.get("name", userinfo["email"]),
+    }
+    return RedirectResponse(url="/")
+
+
+@app.get("/auth/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/")
+
+
+@app.get("/auth/me")
+async def me(request: Request):
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in.")
+    return user
+
+
+#Data ingestion
 
 @app.post("/ingest")
-async def ingest_pdf(email: str,thread_id:str, file: UploadFile = File(...)):
+async def ingest_pdf(
+    thread_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    email = user["email"]
     file_extensions = [
     ".pdf",   # Portable Document Format
     ".xps",   # XML Paper Specification
@@ -87,7 +164,7 @@ async def ingest_pdf(email: str,thread_id:str, file: UploadFile = File(...)):
         if not chunks:
             raise HTTPException(status_code=400, detail="Document produced no chunks.")
  
-        push_batch(email=email, chunks=chunks, thread_id=thread_id)
+        await push_batch(email=email, chunks=chunks, thread_id=thread_id)
  
         return JSONResponse(
             status_code=200,
@@ -103,10 +180,11 @@ async def ingest_pdf(email: str,thread_id:str, file: UploadFile = File(...)):
 
 
 @app.post("/chat")
-def chat_endpoint(request: ChatRequest):
+def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
+    email = user["email"]
     res = chatbot.invoke(
-        {"messages": [HumanMessage(content=request.inp)]},
-        config={"configurable": {"thread_id": request.thread_id, "user_id": request.user_id}}
+        {"messages": [HumanMessage(content=request.inp)], 'email': email},
+        config={"configurable": {"thread_id": request.thread_id, "user_id": email}}
     )
     
     # Extract response content cleanly to return JSON

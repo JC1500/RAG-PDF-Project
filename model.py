@@ -8,33 +8,26 @@ from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
 from langchain_openrouter import ChatOpenRouter
-from langgraph.graph import StateGraph, START, END, MessagesState, add_messages
+from langgraph.graph import StateGraph, START, END, add_messages
 from langchain.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
-# from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-# from langgraph.store.postgres.aio import AsyncPostgresStore
 from langgraph.store.memory import InMemoryStore
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import RetryPolicy
 from langgraph.store.base import BaseStore
-from pydantic import BaseModel
 from utils.extractor import extract_memory
 from utils.vector_store import get_from_store
 from langgraph.config import get_stream_writer
 from retries.api_fault import api_retry
+from utils.classes import ChatSchema
 load_dotenv()
-
-
-class State(MessagesState):
-    summary: str
-    docs: list[str]
-    query:str
 
 
 model =ChatOpenRouter(model='poolside/laguna-s-2.1:free',temperature=0.0)
 summariser_model = ChatOllama(model='gemma3:4b', temperature=0.0)
 
 
-async def extract_ltm_summarise(s: State, config: RunnableConfig, store: BaseStore):
+async def extract_ltm_summarise(s: ChatSchema, config: RunnableConfig, store: BaseStore):
+    """Used for summarising the chats Extracting data from the data"""
     writer = get_stream_writer() 
     writer({'custom_key':"Extracting Ltm and writing summary......"})
     namespace = ('users', str(config['configurable']['user_id']).replace(".", "_dot_"), 'details')  # type:ignore
@@ -53,7 +46,7 @@ async def extract_ltm_summarise(s: State, config: RunnableConfig, store: BaseSto
 async def get_from_memory(query: str, config: RunnableConfig):
     writer = get_stream_writer() 
     writer({'custom_key':"Extracting data from documents......"})
-    # get_from_store hits Qdrant with a blocking client, using multi-threading to avoid blocking 
+    # get_from_store hits Qdrant with a blocking client, using multi-threading to avoid blocking
     res = await asyncio.to_thread(
         get_from_store,
         email=str(config['configurable']['user_id']), #type:ignore
@@ -63,7 +56,7 @@ async def get_from_memory(query: str, config: RunnableConfig):
     return {'docs': res}
 
 
-async def chat_node(s: State, config: RunnableConfig, store: BaseStore):
+async def chat_node(s: ChatSchema, config: RunnableConfig, store: BaseStore):
     """
     Main chat node that invokes the llm.
     Here we used the memory store to store the long-term memory and memory-saver for storing the short-term memory.
@@ -106,13 +99,13 @@ async def chat_node(s: State, config: RunnableConfig, store: BaseStore):
     res = await model.ainvoke(messages)
     return {'messages': [res]}
 
-def condition_check(s: State):
+def condition_check(s: ChatSchema):
     if len(s['messages']) > 4:
         return 'create_summary'
     return '__end__'
 
 
-graph = StateGraph(State)
+graph = StateGraph(ChatSchema)
 tools=ToolNode([get_from_memory])
 graph.add_node('tools',tools)
 graph.add_node('chat_node', chat_node,retry_policy=RetryPolicy(max_attempts=3,jitter=True,retry_on=api_retry,initial_interval=1.0,backoff_factor=2))  # type:ignore
