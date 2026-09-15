@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Depends
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse,HTMLResponse
-from psycopg_pool import ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 import tempfile
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from utils.vector_store import push_batch
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.store.postgres import PostgresStore
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres.aio import AsyncPostgresStore
 import os
 from model import graph
 from langchain_core.messages import HumanMessage
@@ -16,12 +16,12 @@ import pymupdf4llm
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from utils.classes import ChatRequest
-
+from langsmith import traceable
 chatbot = None
 checkpointer = None
 store = None
 
-#OpenID Connect setup (GOOGLE)
+#OpenID Connect setup GOOGLE
 oauth=OAuth()
 oauth.register(
     name="google",
@@ -34,15 +34,17 @@ oauth.register(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global chatbot, checkpointer, store
-    pool=ConnectionPool(conninfo=str(os.getenv('DB_URI')),min_size=2,max_size=20,max_lifetime=3600.0,kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
-    checkpointer=PostgresSaver(pool)
-    store=PostgresStore(pool)
+    pool=AsyncConnectionPool(conninfo=str(os.getenv('DB_URI')),min_size=2,max_size=20,max_lifetime=3600.0,kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
+    await pool.open()
+    checkpointer=AsyncPostgresSaver(pool)
+    store=AsyncPostgresStore(pool)
     chatbot = graph.compile(checkpointer=checkpointer, store=store)
     yield 
     
-    pool.close()
+    await pool.close()
 
 app = FastAPI(lifespan=lifespan)
+
 
 @app.get('/',response_class=HTMLResponse)
 def default():
@@ -114,7 +116,7 @@ async def me(request: Request):
 
 
 #Data ingestion
-
+@traceable(name='INGESTION')
 @app.post("/ingest")
 async def ingest_pdf(
     thread_id: str,
@@ -163,7 +165,6 @@ async def ingest_pdf(
  
         if not chunks:
             raise HTTPException(status_code=400, detail="Document produced no chunks.")
- 
         await push_batch(email=email, chunks=chunks, thread_id=thread_id)
  
         return JSONResponse(
@@ -180,11 +181,11 @@ async def ingest_pdf(
 
 
 @app.post("/chat")
-def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
+async def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
     email = user["email"]
-    res = chatbot.invoke(
+    res =await chatbot.ainvoke(
         {"messages": [HumanMessage(content=request.inp)], 'email': email},
-        config={"configurable": {"thread_id": request.thread_id, "user_id": email}}
+        config={'run_name':'test01',"configurable": {"thread_id": request.thread_id, "user_id": email}}
     )
     
     # Extract response content cleanly to return JSON

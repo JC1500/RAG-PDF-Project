@@ -5,7 +5,7 @@ from qdrant_client.models import Distance, VectorParams, PointStruct, Document
 from typing import List, Dict
 import uuid
 import asyncio
-
+from langsmith import traceable
 load_dotenv()
 
 model_name = "sentence-transformers/all-MiniLM-L6-v2"
@@ -43,8 +43,7 @@ async def ensure_collection(client: AsyncQdrantClient):
             field_name="thread_id",
             field_schema=models.PayloadSchemaType.KEYWORD
         )
-
-
+@traceable(name='get_from_store')
 async def get_from_store(email: str, query: str, thread_id: str):
     client = get_client()
     if not await client.collection_exists(collection_name):
@@ -91,7 +90,7 @@ async def push(email: str, chunks: str, thread_id: str):
         points=[point]
     )
 
-
+@traceable(name='push_to_store')
 async def push_batch(email: str, chunks: list[str], thread_id: str):
     client = get_client()
     await ensure_collection(client)
@@ -114,8 +113,8 @@ async def push_batch(email: str, chunks: list[str], thread_id: str):
 if __name__ == '__main__':
     async def _main():
         em = 'abc@gmail.com'
-        await push_batch(chunks=['hello', 'hi', 'bye'], email=em, thread_id='13')
-        a = await get_from_store(query='hello', email=em, thread_id='13')
+        # await push_batch(chunks=['hello', 'hi', 'bye'], email=em, thread_id='1')
+        a = await get_from_store(query='hello', email=em, thread_id='1')
         print(a)
 
     asyncio.run(_main())
