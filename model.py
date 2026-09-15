@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+from openrouter import errors
 from typing import Optional
 from langchain.tools import tool
 from langgraph.prebuilt import ToolNode,tools_condition
@@ -22,8 +23,9 @@ from utils.classes import ChatSchema
 load_dotenv()
 
 
-model =ChatOpenRouter(model='poolside/laguna-s-2.1:free',temperature=0.0)
+model =ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
 summariser_model = ChatOllama(model='gemma3:4b', temperature=0.0)
+
 
 
 async def extract_ltm_summarise(s: ChatSchema, config: RunnableConfig, store: BaseStore):
@@ -47,8 +49,7 @@ async def get_from_memory(query: str, config: RunnableConfig):
     writer = get_stream_writer() 
     writer({'custom_key':"Extracting data from documents......"})
     # get_from_store hits Qdrant with a blocking client, using multi-threading to avoid blocking
-    res = await asyncio.to_thread(
-        get_from_store,
+    res=await get_from_store(
         email=str(config['configurable']['user_id']), #type:ignore
         query=query,
         thread_id=str(config['configurable']['thread_id']), #type:ignore
@@ -78,12 +79,16 @@ async def chat_node(s: ChatSchema, config: RunnableConfig, store: BaseStore):
     SYSTEM_PROMPT = f"""You are an expert, friendly AI collaborator and technical assistant.
     {memory_section}
 
+    Tool Calling Capabilities:
+    You have access to a tool called `get_from_memory` that queries a RAG vector database (Qdrant) containing the user's uploaded documents. Use this tool whenever the user's question likely requires information from their documents, past context, or anything you don't already have in the sections below. Call it with a clear, focused search query rather than the raw user message. Do not call it for general knowledge questions that don't need document grounding.
+
     Relevant Document Context (retrieved from the user's uploaded documents):
     {docs_section}
 
     Instructions for Personalization and Response:
     - If user profile data or a name is available above, weave it in naturally (e.g., greet the user by name, acknowledge their tools or frameworks like Python, Qdrant, or LangChain, and reference ongoing project context).
     - If relevant document context is available above, ground your answer in it and cite it naturally; do not fabricate content that isn't there.
+    - If the available context is insufficient to answer confidently, use the `get_from_memory` tool to retrieve more before answering, rather than guessing.
     - Maintain a warm, engaging, and professional tone tailored specifically to this user.
     - STRICT RULE: DO NOT invent, assume, or hallucinate personal details, names, or project histories that are not explicitly provided in the profile data above. If a detail is missing, rely on general technical expertise without fabricating a personal history.
     - Keep responses concise, actionable, and structured with clear formatting when explaining code or technical steps.
@@ -93,22 +98,27 @@ async def chat_node(s: ChatSchema, config: RunnableConfig, store: BaseStore):
     if hist:
         messages.append(SystemMessage(content=f"Conversation Summary of the same chat till now:\n{hist}"))
     messages.extend(s['messages']) #type:ignore
-    # model_with_tools=model.bind_tools([get_from_memory])
+    model_with_tools=model.bind_tools([get_from_memory])
     writer = get_stream_writer() 
     writer({'custom_key':"Model is thinking......"})
-    res = await model.ainvoke(messages)
+    res = await model_with_tools.ainvoke(messages)
     return {'messages': [res]}
 
 def condition_check(s: ChatSchema):
     if len(s['messages']) > 4:
-        return 'create_summary'
+        return 'extract_ltm_summarise'
     return '__end__'
+
+def default_run(s:ChatSchema):
+    return {
+        'status':'Too many requests. Please try again later...'
+    }
 
 
 graph = StateGraph(ChatSchema)
 tools=ToolNode([get_from_memory])
 graph.add_node('tools',tools)
-graph.add_node('chat_node', chat_node,retry_policy=RetryPolicy(max_attempts=3,jitter=True,retry_on=api_retry,initial_interval=1.0,backoff_factor=2))  # type:ignore
+graph.add_node('chat_node', chat_node,retry_policy=RetryPolicy(max_attempts=3,jitter=True,retry_on=api_retry,initial_interval=1.0,backoff_factor=2),error_handler=default_run)  # type:ignore
 graph.add_node('extract_ltm_summarise', extract_ltm_summarise)  # type:ignore
 graph.add_edge(START, 'chat_node')
 graph.add_edge('extract_ltm_summarise',END)
