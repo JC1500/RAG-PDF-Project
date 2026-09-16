@@ -7,7 +7,6 @@ from langchain.tools import tool
 from langgraph.prebuilt import ToolNode,tools_condition
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
-from langchain_ollama import ChatOllama
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import StateGraph, START, END, add_messages
 from langchain.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
@@ -24,7 +23,7 @@ load_dotenv()
 
 
 model =ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
-summariser_model = ChatOllama(model='gemma3:4b', temperature=0.0)
+summariser_model = ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
 
 
 
