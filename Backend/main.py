@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse, FileResponse, RedirectResponse,HTMLR
 from psycopg_pool import AsyncConnectionPool
 import tempfile
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from utils.vector_store import push_batch
+from Frontend.utils.vector_store import push_batch
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres.aio import AsyncPostgresStore
 import os
@@ -15,7 +15,7 @@ from psycopg.rows import dict_row
 import pymupdf4llm
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
-from utils.classes import ChatRequest
+from Frontend.utils.classes import ChatRequest
 from langsmith import traceable
 chatbot = None
 checkpointer = None

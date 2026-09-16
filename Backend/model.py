@@ -1,30 +1,28 @@
 import asyncio
 import os
 import uuid
-from openrouter import errors
 from typing import Optional
-from langchain.tools import tool
+from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode,tools_condition
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
-from langchain_ollama import ChatOllama
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import StateGraph, START, END, add_messages
-from langchain.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage, ToolMessage
 from langgraph.store.memory import InMemoryStore
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import RetryPolicy
 from langgraph.store.base import BaseStore
-from utils.extractor import extract_memory
-from utils.vector_store import get_from_store
+from Backend.utils.extractor import extract_memory
+from Backend.utils.vector_store import get_from_store
 from langgraph.config import get_stream_writer
-from retries.api_fault import api_retry
-from utils.classes import ChatSchema
+from Backend.retries.api_fault import api_retry
+from Backend.utils.classes import ChatSchema
 load_dotenv()
 
 
 model =ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
-summariser_model = ChatOllama(model='gemma3:4b', temperature=0.0)
+summariser_model = ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
 
 
 
