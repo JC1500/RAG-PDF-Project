@@ -27,7 +27,6 @@ This project combines modern AI technologies to create a personal assistant that
 
 **AI/ML:**
 - LangChain & LangGraph for orchestration
-- Ollama with Gemma3:4B LLM
 - PyMuPDF4LLM for document parsing
 - Qdrant vector database for semantic search
 
@@ -73,15 +72,5 @@ This project combines modern AI technologies to create a personal assistant that
 ### Prerequisites
 - Python 3.11+
 - PostgreSQL database
-- Ollama with Gemma3:4B model
 - Qdrant vector database
 - Node.js (optional, for development)
-
-### Environment Variables
-Create a `.env` file:
-```env
-DB_URI=postgresql://user:password@localhost:5432/rag_db
-OLLAMA_MODEL=gemma3:4b
-QDRANT_URL=http://localhost:6333
-GOOGLE_CLIENT_ID=your_client_id
-GOOGLE_CLIENT_SECRET=your_client_secret
