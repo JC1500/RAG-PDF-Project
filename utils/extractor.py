@@ -1,5 +1,5 @@
 import asyncio
-from langchain_ollama import ChatOllama
+from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, Field
 from typing import Annotated
 from typing import Optional
@@ -15,7 +15,7 @@ class schema(BaseModel):
     memories: Annotated[list[str], Field(description='Memories to add to the long term memory.')]
 
 
-llm = ChatOllama(model='gemma3:4b', temperature=0.0)
+llm = ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
 extractor_model = llm.with_structured_output(schema)
 
 async def extract_memory(message: list[AnyMessage], memory: Optional[list[str]] = None,existing_summary:Optional[str]=None) -> None | dict[str,list[str]]:
