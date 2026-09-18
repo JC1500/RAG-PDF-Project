@@ -4,19 +4,21 @@ from fastapi.responses import JSONResponse, FileResponse, RedirectResponse,HTMLR
 from psycopg_pool import AsyncConnectionPool
 import tempfile
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from Frontend.utils.vector_store import push_batch
+from Backend.utils.vector_store import push_batch
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres.aio import AsyncPostgresStore
 import os
-from model import graph
+from Backend.model import graph
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 import pymupdf4llm
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
-from Frontend.utils.classes import ChatRequest
+from Backend.utils.classes import ChatRequest
 from langsmith import traceable
+import pathlib
+
 chatbot = None
 checkpointer = None
 store = None
@@ -34,7 +36,7 @@ oauth.register(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global chatbot, checkpointer, store
-    pool=AsyncConnectionPool(conninfo=str(os.getenv('DB_URI')),min_size=2,max_size=20,max_lifetime=3600.0,kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
+    pool=AsyncConnectionPool(conninfo=str(os.getenv('CLOUD_URI')),min_size=2,max_size=20,max_lifetime=3600.0,kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
     await pool.open()
     checkpointer=AsyncPostgresSaver(pool)
     store=AsyncPostgresStore(pool)
@@ -48,7 +50,9 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get('/',response_class=HTMLResponse)
 def default():
-    return FileResponse("index.html")
+    return FileResponse(pathlib.Path(__file__).parent.parent / "Frontend" / "index.html")
+
+
 
 app.add_middleware(
     SessionMiddleware,
