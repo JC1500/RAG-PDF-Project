@@ -36,8 +36,8 @@ async def extract_ltm_summarise(s: ChatSchema, config: RunnableConfig, store: Ba
     msg = s['messages']
     res = await extract_memory(msg, existing_memories)  # type:ignore
     if res is not None:
-        for item in res['memories']:
-            await store.aput(namespace=namespace, key=str(uuid.uuid4()), value={'memory': item})  # type:ignore
+        for item in res.get('memories',''):
+            if item is not None: await store.aput(namespace=namespace, key=str(uuid.uuid4()), value={'memory': item})  # type:ignore
 
     return {'summary': res['summary'], 'messages': [RemoveMessage(id=m.id) for m in msg[:-4] if m.id]} #type:ignore
 
