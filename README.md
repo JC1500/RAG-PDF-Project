@@ -1,5 +1,7 @@
 # RAG PDF Project
 
+[![Latest Release](https://img.shields.io/github/v/release/JC1500/RAG-PDF-Project?display_name=tag)](https://github.com/JC1500/RAG-PDF-Project/releases)
+
 An intelligent document-based chatbot application that leverages Retrieval-Augmented Generation (RAG) to provide context-aware responses from uploaded PDF and document files.
 
 ## 🎯 Overview
