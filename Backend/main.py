@@ -47,6 +47,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get('/health_check')
+def health_check():
+    return {'message':"ALL GOOD"}
+
 
 @app.get('/',response_class=HTMLResponse)
 def default():
@@ -122,11 +126,7 @@ async def me(request: Request):
 #Data ingestion
 @traceable(name='INGESTION')
 @app.post("/ingest")
-async def ingest_pdf(
-    thread_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
-):
+async def ingest_pdf(thread_id: str,file: UploadFile = File(...),user: dict = Depends(get_current_user),):
     email = user["email"]
     file_extensions = [
     ".pdf",   # Portable Document Format
