@@ -8,10 +8,10 @@ import asyncio
 from langsmith import traceable
 load_dotenv()
 
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
-collection_name = 'test'
+model_name="sentence-transformers/all-MiniLM-L6-v2"
+collection_name=str(os.getenv('Collection_name'))
 
-client: AsyncQdrantClient | None = None
+client: AsyncQdrantClient|None=None
 
 
 def get_client() -> AsyncQdrantClient:
@@ -43,6 +43,7 @@ async def ensure_collection(client: AsyncQdrantClient):
             field_name="thread_id",
             field_schema=models.PayloadSchemaType.KEYWORD
         )
+
 @traceable(name='get_from_store')
 async def get_from_store(email: str, query: str, thread_id: str):
     client = get_client()
@@ -116,5 +117,4 @@ if __name__ == '__main__':
         # await push_batch(chunks=['hello', 'hi', 'bye'], email=em, thread_id='1')
         a = await get_from_store(query='hello', email=em, thread_id='1')
         print(a)
-
     asyncio.run(_main())
