@@ -5,8 +5,10 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 sys.path.insert(0,str(Path(__file__).parents[1]))
-from Backend.main import me,Request,health_check,ingest_pdf,app,get_current_user
-
+from starlette.requests import Request
+from Backend.dependencies import get_current_user
+from Backend.main import app
+from Backend.routers.auth import me
 
 
 
@@ -25,7 +27,28 @@ def test_me_unauthenticated():
 
 
 def test_health_check():
-    assert health_check()['message']=='ALL GOOD'
+    response = TestClient(app).get("/health_check")
+    assert response.json() == {"message": "ALL GOOD"}
+
+
+def test_cors_preflight_for_local_frontend():
+    response = TestClient(app).options(
+        "/chat",
+        headers={
+            "Origin": "http://localhost:5500",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_backend_root_does_not_serve_frontend():
+    response = TestClient(app).get("/")
+    assert response.status_code == 404
 
 
 if __name__ =='__main__':
