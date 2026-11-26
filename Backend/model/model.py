@@ -21,7 +21,7 @@ from Backend.utils.classes import ChatSchema
 load_dotenv()
 
 
-model =ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
+model =ChatOpenRouter(model='recursive/flint-v1.0:free',temperature=0.0)
 summariser_model = ChatOpenRouter(model='inclusionai/ling-3.0-flash-fin:free',temperature=0.0)
 
 

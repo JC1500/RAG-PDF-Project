@@ -1,0 +1,6 @@
+.env
+.git
+Backend/env1
+__pycache__
+*.pyc
+test.ipynb
